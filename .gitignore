@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# MongoDB data
+mongodb-data/
+
+# Logs
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Memory-core (not part of this repo)
+../memory_core/
+
+# Env
+.env
+*.local

@@ -1,0 +1,33 @@
+The Simplified GraphRAG Stack: Unified Memory Over Fragmented Databases
+
+"Building a Graph RAG System without a Graph Database" sounds like a contradiction in terms.
+
+Recently, an architecture for implementing Graph RAG without a graph database emerged. Store entities, relations, and passages in 3 Milvus collections linked by IDs. Graph traversal becomes ID lookups. No Cypher. No separate infrastructure.
+
+Now a similar principle appears again, but with MongoDB as the unified memory layer instead of Milvus.
+
+The pattern: consolidate all memory - documents, vectors, and graph links - into a single system. Stop fragmenting knowledge across databases.
+
+Here's how it materializes with MongoDB:
+
+The ingestion layer pulls data from URIs, notes, emails, docs. Normalized into a single schema in MongoDB. Raw documents stored durably.
+
+The memory pipeline processes each document: Clean text + metadata. Graph extraction (entities + relationships). Normalization (merge "Abi" vs "Abi Aryan"). 
+
+Embeddings with Voyage AI. Output: knowledge graph objects with triplets, vectors, and metadata.
+
+The unified layer lives in a single knowledge_graph collection with three index types working in parallel: Text index for keyword recall. 
+
+Vector index for semantic recall. Graph links for multi-hop traversal. All in one place.
+
+Retrieval happens through an MCP server exposing GraphRAG as tools. Natural language query for compact retrieval. Deep search for progressive graph expansion. Ingest for new data.
+
+The agent layer (Claude Code) orchestrates reasoning. It decides when to retrieve, when to write memory, when to expand context via graph traversal (2-3 hops).
+
+Skills bridge the gap: Assistant-memory harnesses semantic retrieval. Assistant-learn pushes insights back to memory.
+
+Two independent architects, two database choices, one architectural insight: simplification beats infrastructure sprawl. 
+
+Unified memory is the flywheel. Everything else—retrieval, traversal, reasoning—becomes faster and cheaper when you stop syncing multiple systems.
+
+The emerging pattern: whether Milvus, MongoDB, or something else, the question is not "which database?" It is "can we consolidate graph, vector, and document memory in one coherent layer?"

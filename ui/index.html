@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GraphRAG — Unified Memory</title>
+  <style>
+    :root {
+      --bg: #f8f9fc;
+      --surface: #ffffff;
+      --surface2: #f0f2f5;
+      --border: #d1d5db;
+      --accent: #4f46e5;
+      --accent2: #6366f1;
+      --text: #1f2937;
+      --text2: #6b7280;
+      --green: #16a34a;
+      --yellow: #ca8a04;
+      --red: #dc2626;
+      --purple: #9333ea;
+      --cyan: #0891b2;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* sidebar */
+    .sidebar {
+      width: 220px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 20px 0;
+      flex-shrink: 0;
+      box-shadow: 2px 0 8px rgba(0,0,0,0.06);
+    }
+
+    .sidebar-logo {
+      padding: 0 20px 20px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 10px;
+    }
+
+    .sidebar-logo h1 {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.05em;
+    }
+
+    .sidebar-logo span {
+      font-size: 11px;
+      color: var(--text2);
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 20px;
+      color: var(--text2);
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.15s;
+      border-left: 3px solid transparent;
+    }
+
+    .nav-item:hover { background: var(--surface2); color: var(--text); }
+    .nav-item.active { background: var(--surface2); color: var(--accent2); border-left-color: var(--accent2); }
+
+    .nav-emoji { font-size: 16px; }
+
+    /* main */
+    .main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 28px 32px;
+    }
+
+    .header {
+      margin-bottom: 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .header h2 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .header p {
+      color: var(--text2);
+      font-size: 13px;
+    }
+
+    /* mongo control */
+    .mongo-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .mongo-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+    }
+
+    .mongo-badge .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--red);
+    }
+
+    .mongo-badge.running .dot { background: var(--green); }
+
+    .btn-sm {
+      background: var(--surface2);
+      color: var(--text2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-sm:hover { background: var(--border); color: var(--text); }
+    .btn-sm.primary { background: var(--accent); color: white; border-color: var(--accent); }
+    .btn-sm.primary:hover { background: var(--accent2); }
+    .btn-sm.danger { background: var(--red); color: white; border-color: var(--red); }
+
+    /* stats */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+    }
+
+    .stat-card .label {
+      font-size: 11px;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 6px;
+    }
+
+    .stat-card .value {
+      font-size: 28px;
+      font-weight: 700;
+    }
+
+    .stat-card .sub {
+      font-size: 11px;
+      color: var(--text2);
+      margin-top: 3px;
+    }
+
+    .stat-card.green .value { color: var(--green); }
+    .stat-card.purple .value { color: var(--purple); }
+    .stat-card.yellow .value { color: var(--yellow); }
+    .stat-card.cyan .value { color: var(--cyan); }
+
+    /* panel */
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    /* search bar */
+    .search-wrap {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .search-input {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 11px 16px;
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .search-input:focus { border-color: var(--accent); }
+
+    .btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 11px 22px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn:hover { background: var(--accent2); }
+
+    /* results */
+    .result-section {
+      margin-bottom: 24px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-title .count {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1px 8px;
+      font-size: 11px;
+    }
+
+    .result-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 13px 16px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .result-card .source {
+      font-size: 11px;
+      color: var(--text2);
+      margin-bottom: 5px;
+    }
+
+    .result-card .content { color: var(--text); }
+
+    .result-card .meta {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+
+    .tag {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: 11px;
+      color: var(--text2);
+    }
+
+    .tag.type { color: var(--purple); border-color: var(--purple); background: rgba(168,85,247,0.1); }
+    .tag.pred { color: var(--cyan); border-color: var(--cyan); background: rgba(6,182,212,0.1); }
+
+    /* graph card */
+    .graph-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin-bottom: 8px;
+    }
+
+    .graph-card .entity {
+      font-weight: 600;
+      color: var(--accent2);
+      margin-bottom: 8px;
+    }
+
+    .graph-card .edge {
+      font-size: 12px;
+      color: var(--text2);
+      padding: 4px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .graph-card .edge .s { color: var(--text); font-weight: 500; }
+    .graph-card .edge .p { color: var(--cyan); font-style: italic; }
+    .graph-card .edge .o { color: var(--green); font-weight: 500; }
+
+    /* community card */
+    .community-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin-bottom: 8px;
+    }
+
+    .community-card .comm-header {
+      font-weight: 600;
+      color: var(--accent2);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .community-card .comm-size {
+      background: var(--accent);
+      color: white;
+      border-radius: 10px;
+      padding: 1px 8px;
+      font-size: 11px;
+    }
+
+    .community-card .comm-members {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .community-card .member {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 3px 10px;
+      font-size: 12px;
+      color: var(--text2);
+    }
+
+    /* duplicate card */
+    .dup-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .dup-card .sim {
+      background: var(--accent);
+      color: white;
+      border-radius: 4px;
+      padding: 3px 10px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .dup-card .names {
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .dup-card .names .approx { color: var(--text2); }
+
+    /* loading */
+    .loading {
+      text-align: center;
+      padding: 30px;
+      color: var(--text2);
+      font-size: 13px;
+    }
+
+    .loading::after {
+      content: '...';
+      animation: dots 1s infinite;
+    }
+
+    @keyframes dots {
+      0%, 20% { content: '.'; }
+      40% { content: '..'; }
+      60%, 100% { content: '...'; }
+    }
+
+    /* empty */
+    .empty {
+      text-align: center;
+      padding: 40px;
+      color: var(--text2);
+      font-size: 13px;
+    }
+
+    /* flash */
+    .flash {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--green);
+      color: white;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+    }
+
+    .flash.error { background: var(--red); }
+    .flash.show { opacity: 1; }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* query type badge */
+    .qtype-badge {
+      display: inline-block;
+      background: var(--accent);
+      color: white;
+      border-radius: 4px;
+      padding: 2px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-left: 10px;
+    }
+
+    .qtype-badge.SIMPLE { background: var(--green); }
+    .qtype-badge.MULTI_HOP { background: var(--purple); }
+    .qtype-badge.BROAD { background: var(--yellow); color: #000; }
+    .qtype-badge.HYBRID { background: var(--cyan); }
+  </style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-logo">
+    <h1>GRAPHRAG</h1>
+    <span>Doug's Unified Memory</span>
+  </div>
+  <nav>
+    <div class="nav-item active" data-panel="query">
+      <span class="nav-emoji">🔍</span> Query
+    </div>
+    <div class="nav-item" data-panel="explore">
+      <span class="nav-emoji">🔗</span> Graph Explorer
+    </div>
+    <div class="nav-item" data-panel="stats">
+      <span class="nav-emoji">📊</span> Statistics
+    </div>
+    <div class="nav-item" data-panel="communities">
+      <span class="nav-emoji">🟡</span> Communities
+    </div>
+    <div class="nav-item" data-panel="quality">
+      <span class="nav-emoji">🔎</span> Duplicates
+    </div>
+  </nav>
+</div>
+
+<div class="main">
+  <!-- QUERY PANEL -->
+  <div class="panel active" id="panel-query">
+    <div class="header">
+      <div>
+        <h2>Query Memory <span class="qtype-badge" id="qtype-badge"></span></h2>
+        <p>Hybrid search across vector, graph, and documents</p>
+      </div>
+      <div class="mongo-controls">
+        <div class="mongo-badge" id="mongo-badge">
+          <div class="dot"></div>
+          <span id="mongo-label">MongoDB</span>
+        </div>
+        <button class="btn-sm" id="btn-mongo-start">Start</button>
+        <button class="btn-sm danger" id="btn-mongo-stop">Stop</button>
+      </div>
+    </div>
+
+    <div class="search-wrap">
+      <input class="search-input" id="query-input" placeholder="Ask anything... e.g. what is GraphRAG?" />
+      <button class="btn" onclick="doQuery()">Search</button>
+    </div>
+
+    <div id="query-results">
+      <div class="empty" id="query-empty">Enter a query above to search your unified memory</div>
+    </div>
+  </div>
+
+  <!-- GRAPH EXPLORER -->
+  <div class="panel" id="panel-explore">
+    <div class="header">
+      <div>
+        <h2>Graph Explorer</h2>
+        <p>Traverse entity relationships</p>
+      </div>
+    </div>
+
+    <div class="search-wrap">
+      <input class="search-input" id="neighbor-input" placeholder="Entity name... e.g. Doug" />
+      <button class="btn" onclick="doNeighbors()">Explore</button>
+    </div>
+
+    <div id="neighbor-results"></div>
+  </div>
+
+  <!-- STATS PANEL -->
+  <div class="panel" id="panel-stats">
+    <div class="header">
+      <div>
+        <h2>Graph Statistics</h2>
+        <p>Current state of your unified memory</p>
+      </div>
+      <button class="btn-sm" onclick="loadStats()">Refresh</button>
+    </div>
+
+    <div class="stats" id="stats-cards">
+      <div class="stat-card">
+        <div class="label">Entities</div>
+        <div class="value" id="stat-entities">—</div>
+      </div>
+      <div class="stat-card green">
+        <div class="label">Relations</div>
+        <div class="value" id="stat-relations">—</div>
+      </div>
+      <div class="stat-card purple">
+        <div class="label">Documents</div>
+        <div class="value" id="stat-documents">—</div>
+      </div>
+      <div class="stat-card cyan">
+        <div class="label">Cached Queries</div>
+        <div class="value" id="stat-cached">—</div>
+      </div>
+    </div>
+
+    <div class="result-section">
+      <div class="section-title">Entity Types</div>
+      <div id="entity-types"></div>
+    </div>
+
+    <div class="result-section">
+      <div class="section-title">Top Predicates</div>
+      <div id="predicates"></div>
+    </div>
+  </div>
+
+  <!-- COMMUNITIES -->
+  <div class="panel" id="panel-communities">
+    <div class="header">
+      <div>
+        <h2>Entity Communities</h2>
+        <p>Clusters of densely connected entities</p>
+      </div>
+      <button class="btn-sm" onclick="loadCommunities()">Refresh</button>
+    </div>
+    <div id="communities-list"></div>
+  </div>
+
+  <!-- DUPLICATES -->
+  <div class="panel" id="panel-quality">
+    <div class="header">
+      <div>
+        <h2>Duplicate Detection</h2>
+        <p>Potential entities needing resolution</p>
+      </div>
+      <button class="btn-sm" onclick="loadDuplicates()">Refresh</button>
+    </div>
+    <div id="duplicates-list"></div>
+  </div>
+</div>
+
+<div class="flash" id="flash">Saved!</div>
+
+<script>
+const API = '';
+
+function $(id) { return document.getElementById(id); }
+
+function api(method, path, body) {
+  return fetch(API + path, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  }).then(r => r.json()).catch(e => ({ error: e.message }));
+}
+
+function flash(msg, isError=false) {
+  const el = $('flash');
+  el.textContent = msg;
+  el.className = 'flash' + (isError ? ' error' : '') + ' show';
+  setTimeout(() => el.className = 'flash', 2500);
+}
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// nav
+document.querySelectorAll('.nav-item').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    el.classList.add('active');
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    $('panel-' + el.dataset.panel).classList.add('active');
+
+    // load panel data
+    if (el.dataset.panel === 'stats') loadStats();
+    if (el.dataset.panel === 'communities') loadCommunities();
+    if (el.dataset.panel === 'quality') loadDuplicates();
+  });
+});
+
+// MongoDB controls
+async function checkMongoStatus() {
+  const res = await api('GET', '/api/status');
+  const badge = $('mongo-badge');
+  if (res.mongo && res.mongo.running) {
+    badge.className = 'mongo-badge running';
+    $('mongo-label').textContent = 'Running';
+  } else {
+    badge.className = 'mongo-badge';
+    $('mongo-label').textContent = 'Stopped';
+  }
+}
+
+$('btn-mongo-start').addEventListener('click', async () => {
+  const res = await api('POST', '/api/mongo/start', {});
+  if (res.status === 'started') {
+    flash('MongoDB started');
+    checkMongoStatus();
+  } else if (res.status === 'already_running') {
+    flash('MongoDB already running');
+  } else {
+    flash('Failed: ' + (res.error || res.status), true);
+  }
+});
+
+$('btn-mongo-stop').addEventListener('click', async () => {
+  const res = await api('POST', '/api/mongo/stop', {});
+  flash('MongoDB stopped');
+  checkMongoStatus();
+});
+
+// Query
+async function doQuery() {
+  const q = $('query-input').value.trim();
+  if (!q) return;
+
+  $('query-results').innerHTML = '<div class="loading">Searching</div>';
+
+  const res = await api('GET', '/api/ask?q=' + encodeURIComponent(q));
+  const qtype = res.query_type || '?';
+  $('qtype-badge').textContent = qtype;
+  $('qtype-badge').className = 'qtype-badge ' + qtype;
+
+  let html = '';
+
+  // Vector results
+  const vec = res.vector_results || [];
+  if (vec.length) {
+    html += '<div class="result-section"><div class="section-title">Semantic (ChromaDB) <span class="count">' + vec.length + '</span></div>';
+    for (const h of vec.slice(0, 5)) {
+      html += '<div class="result-card"><div class="source">chunk: ' + esc(h.chunk_id) + '</div><div class="content">' + esc(h.content) + '</div></div>';
+    }
+    html += '</div>';
+  }
+
+  // Graph results
+  const graph = res.graph_results || [];
+  if (graph.length) {
+    html += '<div class="result-section"><div class="section-title">Graph (MongoDB) <span class="count">' + graph.length + '</span></div>';
+    for (const g of graph.slice(0, 5)) {
+      const start = esc(g.start_entity);
+      const traversals = g.traversal || [];
+      html += '<div class="result-card"><div class="source">from: ' + start + '</div>';
+      for (const t of traversals.slice(0, 5)) {
+        html += '<div class="content">' + esc(t.entity) + ' <span class="tag pred">' + esc(t.relation) + '</span></div>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  // Document results
+  const docs = res.document_results || [];
+  if (docs.length) {
+    html += '<div class="result-section"><div class="section-title">Documents (MongoDB) <span class="count">' + docs.length + '</span></div>';
+    for (const d of docs.slice(0, 5)) {
+      html += '<div class="result-card"><div class="source">' + esc(d.source) + '</div><div class="content">' + esc(d.content) + '</div></div>';
+    }
+    html += '</div>';
+  }
+
+  if (!html) {
+    html = '<div class="empty">No results found</div>';
+  }
+
+  $('query-results').innerHTML = html;
+}
+
+// Enter key in query input
+$('query-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doQuery();
+});
+
+// Graph explorer
+async function doNeighbors() {
+  const name = $('neighbor-input').value.trim();
+  if (!name) return;
+
+  $('neighbor-results').innerHTML = '<div class="loading">Loading</div>';
+
+  const res = await api('GET', '/api/neighbors/' + encodeURIComponent(name));
+
+  if (res.error) {
+    $('neighbor-results').innerHTML = '<div class="empty">' + esc(res.error) + '</div>';
+    return;
+  }
+
+  const neighbors = res.neighbors || [];
+  const byPred = {};
+  for (const n of neighbors) {
+    const p = n.predicate || 'RELATED_TO';
+    byPred[p] = byPred[p] || [];
+    byPred[p].push(n);
+  }
+
+  let html = '<div class="result-section"><div class="section-title">' + esc(res.entity) + ' <span class="count">' + neighbors.length + ' connections</span></div>';
+  html += '<div class="result-card" style="margin-bottom:16px"><div class="source">type: ' + esc(res.entity_type) + ' · id: ' + esc(res.entity_id) + '</div></div>';
+
+  for (const [pred, items] of Object.entries(byPred)) {
+    html += '<div style="margin-bottom:16px"><div class="section-title">' + esc(pred) + ' <span class="count">' + items.length + '</span></div>';
+    for (const item of items.slice(0, 10)) {
+      html += '<div class="graph-card"><div class="edge"><span class="s">' + esc(item.subject) + '</span> → <span class="o">' + esc(item.object) + '</span></div></div>';
+    }
+    html += '</div>';
+  }
+
+  $('neighbor-results').innerHTML = html;
+}
+
+$('neighbor-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doNeighbors();
+});
+
+// Stats
+async function loadStats() {
+  const res = await api('GET', '/api/stats');
+  const totals = res.totals || {};
+  const er = res.entity_resolution || {};
+
+  $('stat-entities').textContent = totals.entities || 0;
+  $('stat-relations').textContent = totals.relations || 0;
+  $('stat-documents').textContent = totals.documents || 0;
+
+  // Get cache count from status
+  const status = await api('GET', '/api/status');
+  $('stat-cached').textContent = status.graphrag ? status.graphrag.cached_queries : '?';
+
+  // Entity types
+  const et = res.entity_types || {};
+  let etHtml = '';
+  for (const [t, c] of Object.entries(et).sort((a,b) => b[1]-a[1]).slice(0, 10)) {
+    etHtml += '<div class="result-card" style="display:inline-block;margin:4px;padding:8px 14px"><span class="tag type">' + esc(t) + '</span> ' + c + '</div>';
+  }
+  $('entity-types').innerHTML = etHtml || '<div class="empty">No entities</div>';
+
+  // Predicates
+  const pred = res.predicates || {};
+  let predHtml = '';
+  for (const [p, c] of Object.entries(pred).sort((a,b) => b[1]-a[1]).slice(0, 10)) {
+    predHtml += '<div class="result-card" style="display:inline-block;margin:4px;padding:8px 14px"><span class="tag pred">' + esc(p) + '</span> ' + c + '</div>';
+  }
+  $('predicates').innerHTML = predHtml || '<div class="empty">No predicates</div>';
+}
+
+// Communities
+async function loadCommunities() {
+  const res = await api('GET', '/api/communities');
+  const comms = res.communities || [];
+
+  if (!comms.length) {
+    $('communities-list').innerHTML = '<div class="empty">No communities found</div>';
+    return;
+  }
+
+  let html = '';
+  for (const c of comms.slice(0, 10)) {
+    const members = (c.entities || []).slice(0, 12);
+    html += '<div class="community-card">';
+    html += '<div class="comm-header"><span class="comm-size">' + c.size + '</span> entities</div>';
+    html += '<div class="comm-members">';
+    for (const m of members) {
+      html += '<span class="member">' + esc(m.name) + '</span>';
+    }
+    if ((c.entities || []).length > 12) {
+      html += '<span class="member">+' + (c.entities.length - 12) + ' more</span>';
+    }
+    html += '</div></div>';
+  }
+
+  $('communities-list').innerHTML = html;
+}
+
+// Duplicates
+async function loadDuplicates() {
+  const res = await api('GET', '/api/duplicates');
+  const dups = res.duplicates || [];
+
+  if (!dups.length) {
+    $('duplicates-list').innerHTML = '<div class="empty">No potential duplicates found</div>';
+    return;
+  }
+
+  let html = '';
+  for (const d of dups.slice(0, 20)) {
+    const a = d.entity_a || {};
+    const b = d.entity_b || {};
+    html += '<div class="dup-card">';
+    html += '<span class="sim">' + (Math.round(d.similarity * 100)) + '%</span>';
+    html += '<span class="names">' + esc(a.name || '?') + ' <span class="approx">≈</span> ' + esc(b.name || '?') + '</span>';
+    html += '</div>';
+  }
+
+  $('duplicates-list').innerHTML = html;
+}
+
+// Init
+checkMongoStatus();
+</script>
+</body>
+</html>
