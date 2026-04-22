@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "graphrag": {
+      "type": "stdio",
+      "command": "/home/doug/Agentic GraphRAG/.venv/bin/python3",
+      "args": ["-m", "src.mcp_server"]
+    }
+  }
+}

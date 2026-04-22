@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from flask import Flask, render_template_string, jsonify, request
 from src import mongo_memory, graph_quality, llm_cache
 from src.query_router import hybrid_search
+from src.rag_synthesize import rag_with_query
 
 app = Flask(__name__)
 
@@ -131,11 +132,21 @@ def api_stats():
 
 @app.route("/api/ask")
 def api_ask():
-    """Run a query against the unified memory."""
+    """Run a query against the unified memory (chunk-based results)."""
     query = request.args.get("q", "")
     if not query:
         return jsonify({"error": "no query"})
     result = hybrid_search(query, top_k=5, max_hops=2)
+    return jsonify(result)
+
+
+@app.route("/api/rag")
+def api_rag():
+    """Run RAG query with LLM synthesis (natural language answer)."""
+    query = request.args.get("q", "")
+    if not query:
+        return jsonify({"error": "no query"})
+    result = rag_with_query(query, top_k=5, max_hops=2)
     return jsonify(result)
 
 

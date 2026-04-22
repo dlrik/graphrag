@@ -16,6 +16,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src import mongo_memory
 
 CACHE_COL = "llm_cache"
+EXTRACTION_CACHE_COL = "extraction_cache"
+RAG_CACHE_COL = "rag_cache"
 
 # TTL in days
 DEFAULT_TTL_DAYS = 30
@@ -118,6 +120,76 @@ def invalidate_cache(query: str = None, query_type: str = None) -> int:
         result = col.delete_many({"query_type": query_type})
         return result.deleted_count
     return 0
+
+
+def get_cached_response(cache_key: str, collection: str = CACHE_COL) -> Optional[dict]:
+    """Look up a cached response by cache key.
+
+    Args:
+        cache_key: The cache key (hash)
+        collection: Which cache collection ('llm_cache', 'extraction_cache', 'rag_cache')
+
+    Returns the cached result dict or None on miss.
+    """
+    db = mongo_memory._get_db()
+    try:
+        col = db[collection]
+    except Exception:
+        return None
+
+    cached = col.find_one({"cache_key": cache_key})
+    if cached:
+        col.update_one(
+            {"cache_key": cache_key},
+            {"$inc": {"hit_count": 1}, "$set": {"last_hit_at": dt.now().isoformat()}}
+        )
+        return cached.get("result")
+    return None
+
+
+def cache_response(cache_key: str, result: dict, collection: str = CACHE_COL, ttl_days: int = DEFAULT_TTL_DAYS) -> bool:
+    """Store a response in the specified cache collection.
+
+    Args:
+        cache_key: The cache key (hash)
+        result: The response dict to cache
+        collection: Which cache collection
+        ttl_days: Time-to-live in days
+
+    Returns True on success.
+    """
+    db = mongo_memory._get_db()
+    try:
+        col = db[collection]
+    except Exception:
+        return False
+
+    # Ensure TTL index
+    try:
+        col.create_index("created_at", expireAfterSeconds=ttl_days * 86400)
+    except Exception:
+        pass
+    try:
+        col.create_index("cache_key", unique=True)
+    except Exception:
+        pass
+
+    try:
+        col.update_one(
+            {"cache_key": cache_key},
+            {"$set": {
+                "cache_key": cache_key,
+                "result": result,
+                "hit_count": 0,
+                "created_at": dt.now().isoformat(),
+                "last_hit_at": dt.now().isoformat(),
+            }},
+            upsert=True,
+        )
+        return True
+    except Exception as e:
+        print(f"[llm_cache] failed to cache: {e}")
+        return False
 
 
 def get_cache_stats() -> dict:

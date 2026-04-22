@@ -190,6 +190,60 @@
     .panel { display: none; }
     .panel.active { display: block; }
 
+    /* chat */
+    .chat-container {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 180px);
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .chat-msg {
+      padding: 14px 18px;
+      border-radius: 12px;
+      line-height: 1.6;
+      max-width: 85%;
+    }
+
+    .chat-msg.user {
+      background: var(--accent);
+      color: white;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+
+    .chat-msg.assistant {
+      background: var(--surface2);
+      color: var(--text);
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+
+    .chat-msg .sources {
+      margin-top: 10px;
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    .chat-msg .sources strong {
+      font-weight: 600;
+    }
+
+    .chat-input-wrap {
+      display: flex;
+      gap: 10px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+
     /* search bar */
     .search-wrap {
       display: flex;
@@ -460,7 +514,10 @@
     <span>Doug's Unified Memory</span>
   </div>
   <nav>
-    <div class="nav-item active" data-panel="query">
+    <div class="nav-item" data-panel="chat">
+      <span class="nav-emoji">💬</span> Chat
+    </div>
+    <div class="nav-item" data-panel="query">
       <span class="nav-emoji">🔍</span> Query
     </div>
     <div class="nav-item" data-panel="explore">
@@ -503,6 +560,26 @@
 
     <div id="query-results">
       <div class="empty" id="query-empty">Enter a query above to search your unified memory</div>
+    </div>
+  </div>
+
+  <!-- CHAT PANEL (RAG synthesis) -->
+  <div class="panel" id="panel-chat">
+    <div class="header">
+      <div>
+        <h2>Chat with your Documents</h2>
+        <p>Ask questions in natural language — I'll read your files and answer</p>
+      </div>
+    </div>
+
+    <div class="chat-container" id="chat-container">
+      <div class="chat-messages" id="chat-messages">
+        <div class="empty" id="chat-empty">Ask me anything about your documents — I'll search, read, and respond naturally.</div>
+      </div>
+      <div class="chat-input-wrap">
+        <input class="search-input" id="chat-input" placeholder="Ask about your documents... e.g. what did we discuss in the Q1 meeting?" />
+        <button class="btn" onclick="doChat()">Send</button>
+      </div>
     </div>
   </div>
 
@@ -721,6 +798,48 @@ async function doQuery() {
 // Enter key in query input
 $('query-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') doQuery();
+});
+
+// Chat / RAG
+async function doChat() {
+  const q = $('chat-input').value.trim();
+  if (!q) return;
+
+  $('chat-empty')?.remove();
+
+  // Append user message
+  const msgs = $('chat-messages');
+  msgs.innerHTML += '<div class="chat-msg user">' + esc(q) + '</div>';
+  $('chat-input').value = '';
+
+  // Scroll to bottom
+  msgs.scrollTop = msgs.scrollHeight;
+
+  // Show loading
+  const loadingEl = document.createElement('div');
+  loadingEl.className = 'chat-msg assistant';
+  loadingEl.textContent = 'Thinking...';
+  msgs.appendChild(loadingEl);
+  msgs.scrollTop = msgs.scrollHeight;
+
+  const res = await api('GET', '/api/rag?q=' + encodeURIComponent(q));
+
+  // Remove loading
+  loadingEl.remove();
+
+  // Show answer
+  const answer = res.answer || "I couldn't generate an answer. Check that MongoDB and the API are running.";
+  const sources = res.sources || [];
+
+  let html = '<div>' + esc(answer) + '</div>';
+
+  msgs.innerHTML += '<div class="chat-msg assistant">' + html + '</div>';
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+// Enter key in chat input
+$('chat-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doChat();
 });
 
 // Graph explorer

@@ -46,31 +46,14 @@ def extract_from_url(url: str) -> str:
 
 
 def extract_from_file(path: str) -> str:
-    """Extract text from a local file."""
+    """Extract text from a local file using multi-format parser."""
     if not os.path.exists(path):
         return ""
 
-    ext = os.path.splitext(path)[1].lower()
-
-    if ext in (".txt", ".md", ".csv", ".json", ".py", ".js", ".ts", ".html", ".xml"):
-        with open(path) as f:
-            return f.read()
-
-    if ext == ".pdf":
-        # Basic PDF text extraction
-        try:
-            import subprocess
-            result = subprocess.run(["pdftotext", path, "-"], capture_output=True, text=True, timeout=30)
-            return result.stdout if result.returncode == 0 else ""
-        except Exception:
-            return ""
-
-    # Unknown extension - try as plain text anyway
-    try:
-        with open(path) as f:
-            return f.read()
-    except Exception:
-        return ""
+    # Use the multi-format document parser
+    from src.document_parser import parse_document
+    result = parse_document(path)
+    return result.get("text", "")
 
 
 def extract_from_conversation(messages: list[dict]) -> str:
