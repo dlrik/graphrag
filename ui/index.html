@@ -6,19 +6,26 @@
   <title>GraphRAG — Unified Memory</title>
   <style>
     :root {
-      --bg: #f8f9fc;
+      --bg: #f7f5f0;
       --surface: #ffffff;
-      --surface2: #f0f2f5;
-      --border: #d1d5db;
-      --accent: #4f46e5;
+      --surface2: #f0ede6;
+      --border: #ddd8cf;
+      --border-light: #eae6de;
+      --accent: #4338ca;
       --accent2: #6366f1;
-      --text: #1f2937;
-      --text2: #6b7280;
-      --green: #16a34a;
-      --yellow: #ca8a04;
-      --red: #dc2626;
-      --purple: #9333ea;
-      --cyan: #0891b2;
+      --accent-deep: #3730a3;
+      --text: #1c1917;
+      --text2: #78716c;
+      --text3: #a8a29e;
+      --green: #15803d;
+      --yellow: #a16207;
+      --red: #b91c1c;
+      --purple: #7e22ce;
+      --cyan: #0e7490;
+      --amber: #b45309;
+      --amber-light: #fef3c7;
+      --paper: #fdfcfa;
+      --assistant-bg: #f9f7f4;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -26,11 +33,13 @@
     body {
       background: var(--bg);
       color: var(--text);
-      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
       display: flex;
       height: 100vh;
       overflow: hidden;
     }
+
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;1,9..144,400&display=swap');
 
     /* sidebar */
     .sidebar {
@@ -190,59 +199,383 @@
     .panel { display: none; }
     .panel.active { display: block; }
 
-    /* chat */
-    .chat-container {
+    /* ─── Chat ─────────────────────────────────────────────────── */
+    .chat-wrapper {
       display: flex;
       flex-direction: column;
-      height: calc(100vh - 180px);
+      height: calc(100vh - 160px);
+      background: var(--paper);
+      border-radius: 16px;
+      border: 1px solid var(--border-light);
+      box-shadow: 0 4px 32px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+      overflow: hidden;
+    }
+
+    .chat-header {
+      padding: 20px 28px 16px;
+      border-bottom: 1px solid var(--border-light);
+      background: var(--paper);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .chat-header-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      flex-shrink: 0;
+    }
+
+    .chat-header h3 {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+
+    .chat-header span {
+      font-size: 12px;
+      color: var(--text3);
+      margin-left: auto;
     }
 
     .chat-messages {
       flex: 1;
       overflow-y: auto;
-      padding: 16px 0;
+      padding: 24px 28px;
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 20px;
+      scroll-behavior: smooth;
     }
 
-    .chat-msg {
-      padding: 14px 18px;
-      border-radius: 12px;
+    .chat-messages::-webkit-scrollbar { width: 4px; }
+    .chat-messages::-webkit-scrollbar-track { background: transparent; }
+    .chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* Empty state */
+    .chat-empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: var(--text3);
+      text-align: center;
+      padding: 40px;
+    }
+
+    .chat-empty-icon {
+      font-size: 40px;
+      opacity: 0.5;
+    }
+
+    .chat-empty-state p {
+      font-size: 14px;
+      max-width: 320px;
       line-height: 1.6;
-      max-width: 85%;
+    }
+
+    .chat-empty-state small {
+      font-size: 12px;
+      color: var(--text3);
+      margin-top: 4px;
+    }
+
+    /* Message bubbles */
+    .chat-msg {
+      display: flex;
+      flex-direction: column;
+      max-width: 78%;
+      animation: msgIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes msgIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
     }
 
     .chat-msg.user {
-      background: var(--accent);
-      color: white;
       align-self: flex-end;
-      border-bottom-right-radius: 4px;
+      align-items: flex-end;
     }
 
     .chat-msg.assistant {
-      background: var(--surface2);
-      color: var(--text);
       align-self: flex-start;
-      border-bottom-left-radius: 4px;
+      align-items: flex-start;
     }
 
-    .chat-msg .sources {
-      margin-top: 10px;
+    .chat-msg-role {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text3);
+      margin-bottom: 5px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .chat-msg.user .chat-msg-role { color: var(--accent); }
+    .chat-msg.assistant .chat-msg-role { color: var(--text3); }
+
+    /* Assistant bubble */
+    .chat-bubble-assistant {
+      background: var(--assistant-bg);
+      border: 1px solid var(--border-light);
+      border-radius: 4px 18px 18px 18px;
+      padding: 16px 20px;
+      width: 100%;
+    }
+
+    /* User bubble */
+    .chat-bubble-user {
+      background: linear-gradient(135deg, var(--accent-deep), var(--accent));
+      color: #fff;
+      border-radius: 18px 4px 18px 18px;
+      padding: 12px 18px;
+      box-shadow: 0 2px 12px rgba(67, 56, 202, 0.25);
+    }
+
+    /* Rendered markdown inside bubble */
+    .chat-bubble-assistant,
+    .chat-bubble-user {
+      line-height: 1.75;
+      font-size: 14.5px;
+    }
+
+    .chat-bubble-assistant h1,
+    .chat-bubble-assistant h2,
+    .chat-bubble-assistant h3 {
+      font-family: 'Fraunces', Georgia, serif;
+      color: var(--text);
+      margin: 0.6em 0 0.3em;
+      line-height: 1.3;
+    }
+
+    .chat-bubble-assistant h1 { font-size: 18px; font-weight: 500; }
+    .chat-bubble-assistant h2 { font-size: 15px; font-weight: 500; border-bottom: 1px solid var(--border-light); padding-bottom: 4px; }
+    .chat-bubble-assistant h3 { font-size: 13.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text2); }
+
+    .chat-bubble-assistant p { margin: 0.5em 0; }
+    .chat-bubble-assistant p:first-child { margin-top: 0; }
+    .chat-bubble-assistant p:last-child { margin-bottom: 0; }
+
+    .chat-bubble-assistant ul,
+    .chat-bubble-assistant ol {
+      margin: 0.5em 0;
+      padding-left: 1.4em;
+    }
+
+    .chat-bubble-assistant li { margin: 0.25em 0; }
+
+    .chat-bubble-assistant strong { font-weight: 600; color: var(--text); }
+    .chat-bubble-assistant em { font-style: italic; color: var(--text2); }
+
+    .chat-bubble-assistant code {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12.5px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+      color: var(--accent-deep);
+    }
+
+    .chat-bubble-assistant blockquote {
+      border-left: 3px solid var(--accent);
+      margin: 0.6em 0;
+      padding: 4px 12px;
+      color: var(--text2);
+      font-style: italic;
+      background: var(--surface2);
+      border-radius: 0 6px 6px 0;
+    }
+
+    .chat-bubble-assistant hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 12px 0;
+    }
+
+    .chat-bubble-assistant a {
+      color: var(--accent);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    /* Stage pills (custom: **Stage 1: Extraction** styled) */
+    .chat-bubble-assistant .stage-pill {
+      display: inline-block;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 2px 10px;
       font-size: 12px;
-      opacity: 0.8;
+      font-weight: 500;
+      color: var(--accent-deep);
+      margin: 2px 4px 2px 0;
     }
 
-    .chat-msg .sources strong {
+    /* Sources section */
+    .chat-sources {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border-light);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .chat-sources-label {
+      font-size: 10.5px;
       font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text3);
+      margin-right: 2px;
     }
 
+    .source-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--amber-light);
+      border: 1px solid #fcd34d;
+      color: var(--amber);
+      border-radius: 20px;
+      padding: 3px 10px 3px 8px;
+      font-size: 11.5px;
+      font-weight: 500;
+      cursor: default;
+      max-width: 200px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .source-chip.graph-src {
+      background: #dbeafe;
+      border-color: #93c5fd;
+      color: #1d4ed8;
+    }
+
+    .source-chip.doc-src {
+      background: #f0fdf4;
+      border-color: #86efac;
+      color: #15803d;
+    }
+
+    .source-chip .chip-icon {
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+
+    .source-chip .chip-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .source-chip.clickable {
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .source-chip.clickable:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    }
+
+    .source-chip.clickable:active {
+      transform: translateY(0);
+    }
+
+    /* Loading indicator */
+    .chat-loading {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0;
+      color: var(--text3);
+      font-size: 13px;
+    }
+
+    .chat-loading-dots {
+      display: flex;
+      gap: 4px;
+    }
+
+    .chat-loading-dots span {
+      width: 6px; height: 6px;
+      background: var(--text3);
+      border-radius: 50%;
+      animation: dotPulse 1.2s ease-in-out infinite;
+    }
+
+    .chat-loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .chat-loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes dotPulse {
+      0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+      40% { opacity: 1; transform: scale(1); }
+    }
+
+    /* Input bar */
     .chat-input-wrap {
       display: flex;
       gap: 10px;
-      padding-top: 12px;
-      border-top: 1px solid var(--border);
+      padding: 16px 28px 20px;
+      background: var(--paper);
+      border-top: 1px solid var(--border-light);
+      align-items: flex-end;
     }
+
+    .chat-input {
+      flex: 1;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 16px;
+      color: var(--text);
+      font-size: 14px;
+      font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
+      resize: none;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      min-height: 46px;
+      max-height: 120px;
+      line-height: 1.5;
+    }
+
+    .chat-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(67, 56, 202, 0.1);
+    }
+
+    .chat-input::placeholder { color: var(--text3); }
+
+    .chat-send-btn {
+      width: 46px;
+      height: 46px;
+      background: var(--accent);
+      border: none;
+      border-radius: 12px;
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+      transition: background 0.15s, transform 0.1s;
+      box-shadow: 0 2px 8px rgba(67, 56, 202, 0.3);
+    }
+
+    .chat-send-btn:hover { background: var(--accent-deep); }
+    .chat-send-btn:active { transform: scale(0.95); }
+    .chat-send-btn:disabled { background: var(--border); box-shadow: none; cursor: default; transform: none; }
 
     /* search bar */
     .search-wrap {
@@ -503,6 +836,127 @@
     .qtype-badge.SIMPLE { background: var(--green); }
     .qtype-badge.MULTI_HOP { background: var(--purple); }
     .qtype-badge.BROAD { background: var(--yellow); color: #000; }
+
+    /* ─── Document Viewer Modal ──────────────────────────────── */
+    .doc-modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(28, 25, 23, 0.6);
+      backdrop-filter: blur(4px);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+
+    .doc-modal-overlay.open {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .doc-modal {
+      background: var(--paper);
+      border-radius: 16px;
+      width: min(860px, 100%);
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.25), 0 4px 16px rgba(0,0,0,0.15);
+      transform: translateY(16px) scale(0.97);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .doc-modal-overlay.open .doc-modal {
+      transform: translateY(0) scale(1);
+    }
+
+    .doc-modal-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid var(--border-light);
+      flex-shrink: 0;
+    }
+
+    .doc-modal-icon {
+      font-size: 22px;
+      margin-top: 2px;
+      flex-shrink: 0;
+    }
+
+    .doc-modal-title {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .doc-modal-title h3 {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      word-break: break-all;
+      line-height: 1.4;
+    }
+
+    .doc-modal-title p {
+      font-size: 12px;
+      color: var(--text3);
+      margin-top: 3px;
+    }
+
+    .doc-modal-close {
+      width: 32px; height: 32px;
+      border: none; background: var(--surface2);
+      border-radius: 8px; cursor: pointer;
+      font-size: 16px; color: var(--text2);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.15s;
+    }
+
+    .doc-modal-close:hover { background: var(--border); }
+
+    .doc-modal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+    }
+
+    .doc-modal-body::-webkit-scrollbar { width: 4px; }
+    .doc-modal-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .doc-modal-content {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 13px;
+      line-height: 1.8;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: var(--assistant-bg);
+      border: 1px solid var(--border-light);
+      border-radius: 10px;
+      padding: 20px 24px;
+    }
+
+    .doc-modal-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 40px;
+      color: var(--text3);
+      font-size: 14px;
+    }
+
+    .doc-modal-error {
+      padding: 24px;
+      text-align: center;
+      color: var(--red);
+      font-size: 14px;
+    }
     .qtype-badge.HYBRID { background: var(--cyan); }
   </style>
 </head>
@@ -575,13 +1029,31 @@
       </div>
     </div>
 
-    <div class="chat-container" id="chat-container">
-      <div class="chat-messages" id="chat-messages">
-        <div class="empty" id="chat-empty">Ask me anything about your documents — I'll search, read, and respond naturally.</div>
+    <div class="chat-wrapper" id="chat-wrapper">
+      <div class="chat-header">
+        <div class="chat-header-dot"></div>
+        <h3>Knowledge Assistant</h3>
+        <span id="chat-model">MiniMax-M2.7</span>
       </div>
+
+      <div class="chat-messages" id="chat-messages">
+        <div class="chat-empty-state" id="chat-empty">
+          <div class="chat-empty-icon">📚</div>
+          <p>Ask me anything about your documents — I'll search across your knowledge graph and give you sourced answers.</p>
+          <small>Try: "what files have we ingested?" or "tell me about the GraphRAG ingestion pipeline"</small>
+        </div>
+      </div>
+
       <div class="chat-input-wrap">
-        <input class="search-input" id="chat-input" placeholder="Ask about your documents... e.g. what did we discuss in the Q1 meeting?" />
-        <button class="btn" onclick="doChat()">Send</button>
+        <textarea
+          class="chat-input"
+          id="chat-input"
+          rows="1"
+          placeholder="Ask about your documents… e.g. what stages does the ingestion pipeline have?"
+          onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();doChat()}"
+          oninput="autoResizeChatInput(this)"
+        ></textarea>
+        <button class="chat-send-btn" id="chat-send-btn" onclick="doChat()">↑</button>
       </div>
     </div>
   </div>
@@ -832,47 +1304,166 @@ $('query-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') doQuery();
 });
 
-// Chat / RAG
+// ─── Markdown renderer ─────────────────────────────────────────
+function renderMarkdown(text) {
+  if (!text) return '';
+  let t = text;
+
+  // Code blocks (must come before inline)
+  t = t.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    return `<pre style="background:#1e1e2e;color:#cdd6f4;border-radius:8px;padding:12px 14px;overflow-x:auto;font-size:12.5px;margin:0.7em 0"><code>${code.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code></pre>`;
+  });
+
+  // Inline code
+  t = t.replace(/`([^`]+)`/g, (_, c) => `<code>${c.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code>`);
+
+  // Bold
+  t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+  // Italic
+  t = t.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+  // Headers (### first to avoid conflict with ##)
+  t = t.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  t = t.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  t = t.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+  // Stage pills: **Stage N: Name** → styled pill
+  t = t.replace(/\*\*Stage (\d+): ([^*]+)\*\*/g,
+    '<span class="stage-pill">Stage $1: $2</span>');
+
+  // Blockquote
+  t = t.replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>');
+
+  // Horizontal rule
+  t = t.replace(/^---$/gm, '<hr>');
+
+  // Bullet lists
+  t = t.replace(/^[\-\*] (.+)$/gm, '<li>$1</li>');
+  t = t.replace(/(<li>.*<\/li>\n?)+/g, m => '<ul>' + m + '</ul>');
+
+  // Numbered lists
+  t = t.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+
+  // Paragraphs: double newlines
+  t = t.replace(/\n\n+/g, '</p><p>');
+  t = '<p>' + t + '</p>';
+  t = t.replace(/<p><\/p>/g, '');
+  t = t.replace(/<p>(<h[123]>)/g, '$1');
+  t = t.replace(/(<\/h[123]>)<\/p>/g, '$1');
+  t = t.replace(/<p>(<ul>)/g, '$1');
+  t = t.replace(/(<\/ul>)<\/p>/g, '$1');
+  t = t.replace(/<p>(<blockquote>)/g, '$1');
+  t = t.replace(/(<\/blockquote>)<\/p>/g, '$1');
+  t = t.replace(/<p>(<pre>)/g, '$1');
+  t = t.replace(/(<\/pre>)<\/p>/g, '$1');
+  t = t.replace(/<p>(<hr>)<\/p>/g, '$1');
+
+  // Links
+  t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+  return t;
+}
+
+// ─── Source chips ──────────────────────────────────────────────
+function renderSources(sources, docResults) {
+  if (!sources || !sources.length) return '';
+
+  // Build a doc_id lookup by source
+  const docBySource = {};
+  if (docResults && docResults.length) {
+    for (const d of docResults) {
+      if (d.source) docBySource[d.source] = d.doc_id;
+      // Also key by filename without path
+      const fn = (d.source || '').split('/').pop();
+      if (fn) docBySource[fn] = d.doc_id;
+    }
+  }
+
+  const chips = sources.slice(0, 10).map(s => {
+    let cls = 'source-chip', icon = '📄', label = s, docId = null, clickable = false;
+
+    if (s.startsWith('graph:')) {
+      cls += ' graph-src'; icon = '🔗'; label = s.replace('graph:', '');
+    } else if (s === 'system_stats') {
+      cls += ' doc-src'; icon = '⚙️'; label = 'System';
+    } else if (/^[a-f0-9]{32,}$/.test(s)) {
+      cls += ' doc-src'; icon = '📊'; label = s.slice(0, 8) + '…';
+    } else if (s.startsWith('/') || s.startsWith('file:')) {
+      const fn = s.split('/').pop().replace('file:', '');
+      label = fn.length > 32 ? fn.slice(0, 30) + '…' : fn;
+      docId = docBySource[s] || docBySource[fn];
+      if (docId) { cls += ' clickable'; clickable = true; }
+    } else if (s.startsWith('conversation:')) {
+      cls += ' doc-src'; icon = '💬'; label = s.replace('conversation:', 'chat:') || 'Conversation';
+    }
+
+    const onclick = clickable ? `onclick="openDocModal('${esc(s)}',true)"` : '';
+    const title = clickable ? ` title="Click to view document"` : '';
+    return `<span class="${cls}"${title}${onclick}><span class="chip-icon">${icon}</span><span class="chip-label">${esc(label)}</span>${clickable?' <span style="opacity:0.5;font-size:10px">↗</span>':''}</span>`;
+  }).join('');
+  return `<div class="chat-sources"><span class="chat-sources-label">Sources</span>${chips}</div>`;
+}
+
+// ─── Auto-resize textarea ───────────────────────────────────────
+function autoResizeChatInput(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+// ─── Chat / RAG ────────────────────────────────────────────────
 async function doChat() {
   const q = $('chat-input').value.trim();
   if (!q) return;
 
   $('chat-empty')?.remove();
 
-  // Append user message
   const msgs = $('chat-messages');
-  msgs.innerHTML += '<div class="chat-msg user">' + esc(q) + '</div>';
-  $('chat-input').value = '';
 
-  // Scroll to bottom
+  // User message
+  const userEl = document.createElement('div');
+  userEl.className = 'chat-msg user';
+  userEl.innerHTML = `<div class="chat-msg-role">You</div><div class="chat-bubble-user">${esc(q)}</div>`;
+  msgs.appendChild(userEl);
+  $('chat-input').value = '';
+  autoResizeChatInput($('chat-input'));
   msgs.scrollTop = msgs.scrollHeight;
 
-  // Show loading
+  // Loading
   const loadingEl = document.createElement('div');
   loadingEl.className = 'chat-msg assistant';
-  loadingEl.textContent = 'Thinking...';
+  loadingEl.innerHTML = `<div class="chat-msg-role">Assistant</div>
+    <div class="chat-bubble-assistant"><div class="chat-loading">
+      <div class="chat-loading-dots"><span></span><span></span><span></span></div>
+      Searching knowledge graph…
+    </div></div>`;
   msgs.appendChild(loadingEl);
   msgs.scrollTop = msgs.scrollHeight;
 
   const res = await api('GET', '/api/rag?q=' + encodeURIComponent(q));
 
-  // Remove loading
   loadingEl.remove();
 
-  // Show answer
-  const answer = res.answer || "I couldn't generate an answer. Check that MongoDB and the API are running.";
+  const answer = res.answer || "I couldn't generate an answer. Make sure MongoDB is running and you've ingested some documents.";
   const sources = res.sources || [];
+  const docResults = res.document_results || [];
 
-  let html = '<div>' + esc(answer) + '</div>';
+  // Build doc_id lookup for source chips
+  _docIdBySource = {};
+  for (const d of docResults) {
+    if (d.source) _docIdBySource[d.source] = d.doc_id;
+    const fn = (d.source || '').split('/').pop();
+    if (fn) _docIdBySource[fn] = d.doc_id;
+  }
 
-  msgs.innerHTML += '<div class="chat-msg assistant">' + html + '</div>';
+  const assistantEl = document.createElement('div');
+  assistantEl.className = 'chat-msg assistant';
+  assistantEl.innerHTML =
+    `<div class="chat-msg-role">Assistant</div>
+     <div class="chat-bubble-assistant">${renderMarkdown(answer)}${renderSources(sources, docResults)}</div>`;
+  msgs.appendChild(assistantEl);
   msgs.scrollTop = msgs.scrollHeight;
 }
-
-// Enter key in chat input
-$('chat-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') doChat();
-});
 
 // Graph explorer
 async function doNeighbors() {
@@ -1046,7 +1637,66 @@ async function ingestUrl() {
   }
 }
 
-// Init
+// ─── Document Viewer Modal ──────────────────────────────────
+let _docIdBySource = {};  // source string → doc_id lookup
+let _openDocId = null;
+
+function openDocModal(source, isFile) {
+  const overlay = $('doc-modal');
+  if (!overlay) return;
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  const titleEl = $('doc-modal-title');
+  const bodyEl = $('doc-modal-body');
+
+  // Resolve doc_id from source
+  const docId = _docIdBySource[source] || source;
+  _openDocId = docId;
+
+  titleEl.innerHTML = `<h3>${esc(source.split('/').pop())}</h3><p>${esc(source)}</p>`;
+  bodyEl.innerHTML = '<div class="doc-modal-loading"><div class="chat-loading-dots"><span></span><span></span><span></span></div> Loading document</div>';
+
+  fetch('/api/doc/' + encodeURIComponent(docId))
+    .then(r => r.json())
+    .then(doc => {
+      if (doc.error) {
+        bodyEl.innerHTML = `<div class="doc-modal-error">${esc(doc.error)}</div>`;
+        return;
+      }
+      titleEl.innerHTML = `<h3>${esc((doc.source || doc.doc_id).split('/').pop())}</h3><p style="font-size:11px;color:var(--text3);margin-top:4px">${esc(doc.doc_id)}</p>`;
+      bodyEl.innerHTML = `<div class="doc-modal-content">${esc(doc.content)}</div>`;
+    })
+    .catch(e => {
+      bodyEl.innerHTML = `<div class="doc-modal-error">Failed to load: ${esc(e.message)}</div>`;
+    });
+}
+
+function closeDocModal() {
+  const overlay = $('doc-modal');
+  if (overlay) overlay.classList.remove('open');
+  document.body.style.overflow = '';
+  _openDocId = null;
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDocModal(); });
+</script>
+
+<!-- Document Viewer Modal -->
+<div class="doc-modal-overlay" id="doc-modal" onclick="if(event.target===this)closeDocModal()">
+  <div class="doc-modal">
+    <div class="doc-modal-header">
+      <div class="doc-modal-icon">📄</div>
+      <div class="doc-modal-title" id="doc-modal-title"><p>Document</p></div>
+      <button class="doc-modal-close" onclick="closeDocModal()">✕</button>
+    </div>
+    <div class="doc-modal-body" id="doc-modal-body">
+      <div class="doc-modal-loading">Select a document to view its contents</div>
+    </div>
+  </div>
+</div>
+
+<script>
 checkMongoStatus();
 </script>
 </body>

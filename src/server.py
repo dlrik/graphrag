@@ -219,6 +219,15 @@ def api_ingest_url():
     return jsonify(result)
 
 
+@app.route("/api/doc/<doc_id>")
+def api_get_doc(doc_id):
+    """Retrieve full document content by doc_id."""
+    doc = mongo_memory.get_document(doc_id)
+    if not doc:
+        return jsonify({"error": "document not found"}), 404
+    return jsonify({"doc_id": doc_id, "content": doc.get("content", ""), "source": doc.get("source", ""), "metadata": doc.get("metadata", {})})
+
+
 if __name__ == "__main__":
     print("GraphRAG UI starting at http://localhost:8080")
     print("MongoDB management: POST /api/mongo/start and /api/mongo/stop")
