@@ -236,7 +236,7 @@ def hybrid_search(query: str, top_k: int = 5, max_hops: int = 2) -> dict:
         try:
             doc_hits = mongo_memory.search_documents(query, limit=top_k)
             results["document_results"] = [
-                {"doc_id": d.get("doc_id"), "content": d.get("content", "")[:2000], "source": d.get("source")}
+                {"doc_id": d.get("doc_id"), "content": d.get("content", ""), "source": d.get("source")}
                 for d in doc_hits
             ]
         except Exception as e:

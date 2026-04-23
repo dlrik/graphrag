@@ -101,7 +101,7 @@ def rag_synthesize(question: str, context_blocks: list[dict], conversation_histo
 
     context_parts = []
     for i, block in enumerate(context_blocks):
-        text = block.get("text", "")[:800]  # Truncate long blocks
+        text = block.get("text", "")[:5000]  # Allow substantial context per block
         source = _clean_source(block.get("source", f"source_{i}"))
         context_parts.append(f"[{source}]\n{text}")
 
