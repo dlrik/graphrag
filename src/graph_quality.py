@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import json
 from datetime import datetime as dt
 from typing import Optional
+from collections import deque
 
 from src import mongo_memory
 
@@ -65,19 +66,34 @@ def find_duplicate_entities() -> list[dict]:
     entities = list(db[mongo_memory.ENTITIES_COL].find({}))
 
     duplicates = []
-    for i, ent_a in enumerate(entities):
-        for ent_b in entities[i+1:]:
-            name_a = ent_a.get("name", "")
+    # Length-based blocking: only compare entities with similar name lengths
+    by_len = {}
+    for ent in entities:
+        name = ent.get("name", "")
+        if name:
+            by_len.setdefault(len(name), []).append(ent)
+
+    checked = set()
+    for ent_a in entities:
+        name_a = ent_a.get("name", "")
+        if not name_a:
+            continue
+        if ent_a.get("canonical_id"):
+            continue
+        # Only compare with entities of similar length (±30%)
+        candidates = by_len.get(len(name_a), [])
+        for ent_b in candidates:
+            if ent_a["entity_id"] >= ent_b["entity_id"]:
+                continue
+            if ent_b.get("canonical_id"):
+                continue
             name_b = ent_b.get("name", "")
-            if not name_a or not name_b:
+            if not name_b:
                 continue
-
-            # Skip if already canonical/alias pair
-            if ent_a.get("canonical_id") or ent_b.get("canonical_id"):
+            # Quick length filter
+            if abs(len(name_a) - len(name_b)) > max(len(name_a), len(name_b)) * 0.3:
                 continue
-
             score = _string_similarity(name_a.lower(), name_b.lower())
-
             if score >= 0.6 and score < 1.0:
                 duplicates.append({
                     "entity_a": {"name": name_a, "entity_id": ent_a["entity_id"]},
@@ -111,9 +127,9 @@ def detect_communities(min_cluster_size: int = 2) -> list[dict]:
 
     def bfs(start_id):
         component = []
-        queue = [start_id]
+        queue = deque([start_id])
         while queue:
-            node = queue.pop(0)
+            node = queue.popleft()
             if node in visited:
                 continue
             visited.add(node)
@@ -184,7 +200,9 @@ def re_resolve_candidates(candidates: list[dict] = None) -> dict:
             result = entity_resolver.resolve_pair(name_a, name_b)
             if result.get("same_entity"):
                 canonical = result.get("canonical_name", name_a)
-                mongo_memory.merge_entities(canonical, name_a, name_b)
+                # Only pass the non-canonical name as alias to avoid self-reference
+                alias_to_merge = name_b if canonical == name_a else name_a
+                mongo_memory.merge_entities(canonical, alias_to_merge)
                 merge_count += 1
                 print(f"[graph_quality] Merged {name_a} + {name_b} → {canonical}")
         except Exception as e:

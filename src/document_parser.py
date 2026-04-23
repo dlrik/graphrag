@@ -115,12 +115,23 @@ def _parse_csv(path: str) -> dict:
     import pandas as pd
 
     try:
-        df = pd.read_csv(path)
-        # Convert to markdown-like table representation
-        lines = [f"[CSV: {os.path.basename(path)}]"]
-        lines.append(f"Columns: {', '.join(df.columns.tolist())}")
+        df = pd.read_csv(path, dtype=str, keep_default_na=False)
+        total_rows = len(df)
+        # Paginate large CSVs: emit chunks of 100 rows each to avoid truncation
+        chunk_size = 100
+        lines = [f"[CSV: {os.path.basename(path)}]", f"Columns: {', '.join(df.columns.tolist())}", ""]
+        truncated_note = ""
+        if total_rows > chunk_size:
+            truncated_note = f" (showing {total_rows} rows in chunks)"
+        lines.append(f"Total rows: {total_rows}{truncated_note}")
         lines.append("")
-        lines.append(df.to_string(max_rows=100, max_colwidth=50))
+
+        for start in range(0, min(total_rows, 1000), chunk_size):
+            end = min(start + chunk_size, total_rows)
+            chunk_df = df.iloc[start:end]
+            lines.append(f"--- Rows {start+1}-{end} ---")
+            lines.append(chunk_df.to_string(max_rows=100, max_colwidth=50))
+            lines.append("")
 
         text = "\n".join(lines)
         chunks = [{"text": text, "source": os.path.basename(path)}]

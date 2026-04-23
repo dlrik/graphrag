@@ -7,6 +7,8 @@ import json
 import re
 import sys
 import os
+import hashlib
+from datetime import datetime as dt
 from typing import Optional
 
 # Add parent to path for absolute imports within package
@@ -16,6 +18,10 @@ if _parent_dir not in sys.path:
 
 # Import via absolute module path
 from src import mongo_memory
+from src import llm_cache
+
+ENTITY_RESOLUTION_CACHE_COL = "entity_resolution_cache"
+ENTITY_RESOLUTION_CACHE_TTL = 30  # days
 
 
 ENTITY_RESOLUTION_PROMPT = """You are an entity resolution engine. Given two entity names, determine if they refer to the SAME real-world entity.
@@ -74,12 +80,67 @@ def _get_minimax_key() -> str:
     return ""
 
 
-def resolve_pair(name_a: str, name_b: str) -> dict:
+def _get_er_cache_db():
+    """Get the entity resolution cache collection."""
+    db = mongo_memory._get_db()
+    try:
+        db.create_collection(ENTITY_RESOLUTION_CACHE_COL)
+    except Exception:
+        pass
+    col = db[ENTITY_RESOLUTION_CACHE_COL]
+    try:
+        col.create_index("cache_key", unique=True)
+    except Exception:
+        pass
+    try:
+        col.create_index("created_at", expireAfterSeconds=ENTITY_RESOLUTION_CACHE_TTL * 86400)
+    except Exception:
+        pass
+    return col
+
+
+def _er_cache_key(name_a: str, name_b: str) -> str:
+    """Generate a cache key for an entity resolution pair (order-independent)."""
+    # Sort alphabetically so 'Abi' vs 'Abi Aryan' and 'Abi Aryan' vs 'Abi' get same key
+    a, b = sorted([name_a.lower().strip(), name_b.lower().strip()])
+    return hashlib.md5(f"er:{a}:{b}".encode()).hexdigest()[:24]
+
+
+def _cache_er_result(cache_key: str, name_a: str, name_b: str, result: dict):
+    """Cache an entity resolution result."""
+    col = _get_er_cache_db()
+    try:
+        col.update_one(
+            {"cache_key": cache_key},
+            {"$set": {
+                "cache_key": cache_key,
+                "name_a": name_a,
+                "name_b": name_b,
+                "result": result,
+                "created_at": dt.now().isoformat(),
+            }},
+            upsert=True,
+        )
+    except Exception as e:
+        print(f"[entity_resolver] cache write failed: {e}")
+
+
+def resolve_pair(name_a: str, name_b: str, use_cache: bool = True) -> dict:
     """Use MiniMax LLM to determine if two entity names refer to the same entity.
 
     Returns dict with same_entity, canonical_name, confidence, reasoning.
     """
     import httpx
+
+    # Check cache first
+    if use_cache:
+        cache_key = _er_cache_key(name_a, name_b)
+        col = _get_er_cache_db()
+        cached = col.find_one({"cache_key": cache_key})
+        if cached:
+            result = cached.get("result", {})
+            result["_cached"] = True
+            return result
 
     api_key = _get_minimax_key()
     if not api_key:
@@ -126,50 +187,203 @@ def resolve_pair(name_a: str, name_b: str) -> dict:
                 content = ""
 
         if not content:
-            raise ValueError("No text content in MiniMax response")
+            result = {"same_entity": False, "canonical_name": name_a, "confidence": 0.0, "reasoning": "No text content in MiniMax response"}
+            if use_cache:
+                _cache_er_result(cache_key, name_a, name_b, result)
+            return result
 
         # Parse JSON - try direct parse first, then extract JSON from text if needed
         import re as re_module
 
+        result = None
         # First try direct parse
         try:
-            return json.loads(content)
+            result = json.loads(content)
         except json.JSONDecodeError:
             pass
 
         # Try to extract JSON object from the text
-        # Look for first { and last } to extract the JSON object
-        first_brace = content.find("{")
-        last_brace = content.rfind("}")
-        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
-            json_str = content[first_brace:last_brace + 1]
+        if result is None:
+            first_brace = content.find("{")
+            last_brace = content.rfind("}")
+            if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+                json_str = content[first_brace:last_brace + 1]
+                try:
+                    result = json.loads(json_str)
+                except json.JSONDecodeError:
+                    pass
+
+        # Clean markdown code fences and try again
+        if result is None:
+            cleaned = re_module.sub(r"^```json\s*", "", content)
+            cleaned = re_module.sub(r"^```\s*", "", cleaned)
+            cleaned = re_module.sub(r"\s*```$", "", cleaned).strip()
             try:
-                return json.loads(json_str)
+                result = json.loads(cleaned)
+            except json.JSONDecodeError as e:
+                result = {"same_entity": False, "canonical_name": name_a, "confidence": 0.0, "reasoning": f"JSON parse error: {e}, content: {content[:200]}"}
+
+        if use_cache:
+            _cache_er_result(cache_key, name_a, name_b, result)
+        return result
+
+    except Exception as e:
+        result = {"same_entity": False, "canonical_name": name_a, "confidence": 0.0, "reasoning": f"Error: {str(e)}"}
+        if use_cache:
+            try:
+                _cache_er_result(cache_key, name_a, name_b, result)
+            except Exception:
+                pass
+        return result
+
+
+def resolve_pair_batch(pairs: list[tuple[str, str]]) -> list[dict]:
+    """Resolve multiple entity pairs in a single LLM call.
+
+    Takes a list of (name_a, name_b) tuples and returns a list of result dicts
+    in the same order. Skips pairs already in cache.
+
+    Returns list of dicts with same keys as resolve_pair: same_entity, canonical_name, etc.
+    """
+    import httpx
+
+    if not pairs:
+        return []
+
+    # Filter out already-cached pairs
+    uncached_pairs = []
+    cached_results = []
+    for name_a, name_b in pairs:
+        cache_key = _er_cache_key(name_a, name_b)
+        col = _get_er_cache_db()
+        cached = col.find_one({"cache_key": cache_key})
+        if cached:
+            result = dict(cached.get("result", {}))
+            result["_cached"] = True
+            cached_results.append((name_a, name_b, result))
+        else:
+            uncached_pairs.append((name_a, name_b))
+
+    if not uncached_pairs:
+        # All were cached — return in original order
+        results_by_pair = {(_sort_pair(a, b)): r for a, b, r in cached_results}
+        return [results_by_pair.get(_sort_pair(a, b), {}) for a, b in pairs]
+
+    # Build batch prompt
+    pairs_text = "\n".join(
+        f'[{i}] Entity A: "{a}" | Entity B: "{b}"'
+        for i, (a, b) in enumerate(uncached_pairs)
+    )
+
+    BATCH_PROMPT = f"""You are an entity resolution engine. For each pair of entities below, determine if they refer to the SAME real-world entity.
+
+Respond with a JSON array (one object per pair, in the same order):
+
+[
+  {{"index": 0, "same_entity": true/false, "canonical_name": "...", "confidence": 0.0-1.0, "reasoning": "..."}},
+  {{"index": 1, "same_entity": true/false, "canonical_name": "...", "confidence": 0.0-1.0, "reasoning": "..."}}
+]
+
+Rules:
+- same_entity=true ONLY for clear matches (Abi vs Abi Aryan, Dr. Smith vs Smith)
+- Completely different names → same_entity=false
+- canonical_name = the most complete/formal version
+- Be conservative — prefer false positives over false negatives
+
+Pairs:
+{pairs_text}
+
+JSON:"""
+
+    api_key = _get_minimax_key()
+    if not api_key:
+        return [{"same_entity": False, "canonical_name": a, "confidence": 0.0, "reasoning": "No API key"} for a, b in pairs]
+
+    results_by_index = {}
+
+    try:
+        with httpx.Client(timeout=60) as client:
+            response = client.post(
+                "https://api.minimax.io/anthropic/v1/messages",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "x-api-key": api_key,
+                },
+                json={
+                    "model": "MiniMax-M2.7",
+                    "messages": [{"role": "user", "content": BATCH_PROMPT}],
+                    "max_tokens": 2048,
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+
+        content = ""
+        for block in data.get("content", []):
+            if block.get("type") == "text":
+                content = block.get("text", "")
+                break
+
+        if not content:
+            raise ValueError("No text content")
+
+        # Try to parse JSON array
+        import re as re_module
+        first_bracket = content.find("[")
+        last_bracket = content.rfind("]")
+        if first_bracket != -1 and last_bracket > first_bracket:
+            try:
+                parsed = json.loads(content[first_bracket:last_bracket + 1])
+                for item in parsed:
+                    idx = item.get("index")
+                    if idx is not None and idx < len(uncached_pairs):
+                        result = {k: v for k, v in item.items() if k != "index"}
+                        results_by_index[idx] = result
             except json.JSONDecodeError:
                 pass
 
-        # Clean markdown code fences and try again
-        content = re_module.sub(r"^```json\s*", "", content)
-        content = re_module.sub(r"^```\s*", "", content)
-        content = re_module.sub(r"\s*```$", "", content)
-
-        try:
-            return json.loads(content)
-        except json.JSONDecodeError as e:
-            return {
-                "same_entity": False,
-                "canonical_name": name_a,
-                "confidence": 0.0,
-                "reasoning": f"JSON parse error: {e}, content: {content[:200]}",
-            }
+        if len(results_by_index) != len(uncached_pairs):
+            # Fallback: extract individual JSON objects
+            for match in re_module.finditer(r'\{[^{}]*"index"\s*:\s*(\d+)[^{}]*\}', content):
+                try:
+                    obj = json.loads(match.group(0))
+                    idx = obj.get("index")
+                    if idx is not None and idx not in results_by_index:
+                        result = {k: v for k, v in obj.items() if k != "index"}
+                        results_by_index[idx] = result
+                except Exception:
+                    pass
 
     except Exception as e:
-        return {
-            "same_entity": False,
-            "canonical_name": name_a,
-            "confidence": 0.0,
-            "reasoning": f"Error: {str(e)}",
-        }
+        print(f"[entity_resolver] batch resolve error: {e}")
+
+    # Build final results in original pair order
+    final_results = {}
+    # Add cached results
+    for i, (a, b, result) in enumerate(cached_results):
+        final_results[-(i + 1)] = result  # negative to sort before uncached
+
+    # Add parsed/uncached results
+    for i, (a, b) in enumerate(uncached_pairs):
+        if i in results_by_index:
+            result = results_by_index[i]
+            # Cache it
+            cache_key = _er_cache_key(a, b)
+            try:
+                _cache_er_result(cache_key, a, b, result)
+            except Exception:
+                pass
+            final_results[i] = result
+        else:
+            final_results[i] = {"same_entity": False, "canonical_name": a, "confidence": 0.0, "reasoning": "Parse error in batch response"}
+
+    return [final_results.get(i, {"same_entity": False, "canonical_name": pairs[i][0], "confidence": 0.0, "reasoning": "Unknown"}) for i in range(len(pairs))]
+
+
+def _sort_pair(a: str, b: str) -> tuple:
+    """Sort a pair for cache key lookup."""
+    return tuple(sorted([a.lower().strip(), b.lower().strip()]))
 
 
 def normalize_name(name: str) -> str:
@@ -207,9 +421,12 @@ def find_candidates(entity_name: str, threshold: float = 0.7) -> list[dict]:
             "similarity": 1.0,
         }]
 
-    # Step 2: look for entities with name_lower containing the normalized name
+    # Step 2: look for entities with name_lower sharing prefix (filter before comparing)
     db = mongo_memory._get_db()
-    all_ents = db[mongo_memory.ENTITIES_COL].find({})
+    prefix = normalized.split()[0][:3] if normalized else ""  # speed: prefix filter
+    all_ents = db[mongo_memory.ENTITIES_COL].find(
+        {"name_lower": {"$regex": f"^{re.escape(prefix)}"}}
+    )
 
     best_score = 0.0
     best_entity = None

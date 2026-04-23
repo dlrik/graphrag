@@ -160,7 +160,7 @@ def rag_synthesize(question: str, context_blocks: list[dict], conversation_histo
         result = {
             "answer": answer,
             "sources": sources,
-            "model": "MiniMax-M.2-7",
+            "model": "MiniMax-M2.7",
             "cached": False,
         }
 
@@ -233,13 +233,32 @@ def rag_with_query(question: str, top_k: int = 5, max_hops: int = 2, conversatio
             "source": h.get("chunk_id", "vector"),
         })
 
-    # Graph results
+    # Graph results — include full traversal context (predicate, depth, source entity)
     for g in search_results.get("graph_results", []):
         for item in g.get("traversal", []):
             if isinstance(item, dict):
+                # Build a descriptive text that includes the relation context
+                entity = item.get("entity", "")
+                predicate = item.get("relation", "")
+                source_entity = item.get("source_entity", "")
+                depth = item.get("depth", 1)
+
+                # Reconstruct the path: "Doug --USES--> Claude Code (1 hop)"
+                if source_entity and predicate:
+                    graph_text = f"{source_entity} --{predicate}--> {entity}"
+                elif predicate:
+                    graph_text = f"{entity} ({predicate})"
+                else:
+                    graph_text = entity
+
                 context_blocks.append({
-                    "text": item.get("text", "") or item.get("name", ""),
-                    "source": item.get("entity_id", "graph"),
+                    "text": graph_text,
+                    "source": f"graph:{item.get('entity_id', 'unknown')}",
+                    "graph_context": {
+                        "predicate": predicate,
+                        "depth": depth,
+                        "source_entity": source_entity,
+                    }
                 })
 
     # Document results

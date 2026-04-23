@@ -4,6 +4,7 @@ entity resolution, and feedback loop support.
 """
 import os, sys, hashlib
 from typing import Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Add parent to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -38,20 +39,10 @@ def _store_entities_mongo(entities: list[dict], source: str, chunk_id: str) -> t
         if not name:
             continue
 
-        # Resolve to canonical entity
+        # Resolve to canonical entity (already stored inside resolve_entity)
         entity_id = _resolve_and_store_entity(name, ent_type, source=source)
         entity_ids[name] = entity_id
-
-        # Store canonical entity in MongoDB
-        try:
-            mongo_memory.store_entity(
-                name=name,
-                entity_type=ent_type,
-                source=source,
-            )
-            stored.append(f"entity:{entity_id}")
-        except Exception as e:
-            print(f"[mongo_ingest] store_entity error for {name}: {e}")
+        stored.append(f"entity:{entity_id}")
 
     return stored, entity_ids
 
@@ -109,15 +100,60 @@ def ingest_url_mongo(url: str) -> dict:
     return _ingest_text_mongo(text, source=f"url:{url}", entity=None)
 
 
-def ingest_file_mongo(path: str, entity: Optional[str] = None) -> dict:
-    """Ingest file with MongoDB storage and entity resolution."""
+def ingest_file_mongo(path: str, entity: Optional[str] = None, skip_unchanged: bool = True) -> dict:
+    """Ingest file with MongoDB storage and entity resolution.
+
+    Args:
+        path: File path to ingest
+        entity: Optional entity tag
+        skip_unchanged: If True, skip ingestion if content hash matches existing document
+    """
+    import hashlib
     from src import ingestion as base_ingestion
 
     text = base_ingestion.extract_from_file(path)
     if not text:
         return {"file": path, "chunks_processed": 0, "entities_stored": 0, "relations_stored": 0, "errors": ["Failed to extract text from file"]}
 
-    return _ingest_text_mongo(text, source=f"file:{path}", entity=entity)
+    source = f"file:{path}"
+    content_hash = hashlib.md5(text.encode()).hexdigest()[:32]
+
+    # Incremental: check if document already ingested with same content
+    if skip_unchanged:
+        existing = mongo_memory.get_document_by_source(source)
+        if existing and existing.get("content_hash") == content_hash:
+            return {"file": path, "chunks_processed": 0, "entities_stored": 0, "relations_stored": 0, "skipped": True, "message": "Content unchanged since last ingest"}
+
+    return _ingest_text_mongo(text, source=source, entity=entity)
+
+
+def ingest_files_mongo(paths: list[str], max_workers: int = 4) -> dict:
+    """Ingest multiple files in parallel.
+
+    Args:
+        paths: List of file paths to ingest
+        max_workers: Max concurrent file ingests (default 4)
+
+    Returns aggregated results across all files.
+    """
+    results = {"files_processed": 0, "total_chunks": 0, "total_entities": 0, "total_relations": 0, "errors": [], "file_results": []}
+
+    def ingest_one(path):
+        return path, ingest_file_mongo(path)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(ingest_one, p): p for p in paths}
+        for future in as_completed(futures):
+            path, res = future.result()
+            results["file_results"].append({"path": path, "result": res})
+            results["total_chunks"] += res.get("chunks_processed", 0)
+            results["total_entities"] += res.get("entities_stored", 0)
+            results["total_relations"] += res.get("relations_stored", 0)
+            results["files_processed"] += 1
+            if res.get("errors"):
+                results["errors"].extend([f"{path}: {e}" for e in res["errors"]])
+
+    return results
 
 
 def ingest_conversation_mongo(messages: list[dict], session_id: Optional[str] = None) -> dict:
@@ -162,14 +198,24 @@ def _ingest_text_mongo(text: str, source: str, entity: Optional[str] = None) -> 
 
     result["chunks_processed"] = len(chunks)
 
-    # Process each chunk
-    all_entity_ids = {}
+    # Process each chunk in parallel (max 5 concurrent LLM calls)
+    extraction_results = []
 
-    for i, chunk in enumerate(chunks):
+    def process_chunk(i, chunk):
         chunk_id = f"{hashlib.md5(source.encode()).hexdigest()[:8]}_{i}"
-
-        # Graph extraction via LLM (MiniMax)
         extraction = graph_extractor.extract(chunk)
+        return i, chunk_id, extraction
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(process_chunk, i, chunk): i for i, chunk in enumerate(chunks)}
+        for future in as_completed(futures):
+            extraction_results.append(future.result())
+
+    # Sort by chunk index to maintain order for relation linking
+    extraction_results.sort(key=lambda x: x[0])
+
+    all_entity_ids = {}
+    for i, chunk_id, extraction in extraction_results:
         entities = extraction.get("entities", [])
         relations = extraction.get("relations", [])
 

@@ -132,16 +132,41 @@ def _get_minimax_key() -> str:
 
 EXTRACT_MARKER = "__TEXT_INPUT__"
 
-ENTITY_EXTRACTION_PROMPT = """You are a knowledge graph extraction engine. Given a text passage, extract all named entities (people, organizations, locations, concepts, etc.) and the relationships between them.
+# Ontology: allowed entity and relation types for schema-driven extraction
+# Grok best practice: enforce a predefined ontology for production consistency
+ENTITY_EXTRACTION_PROMPT = """You are a knowledge graph extraction engine. Given a text passage, extract structured entities and relationships following this ontology.
 
-Return ONLY a JSON object (no explanations):
-{"entities": [{"name": "...", "type": "PERSON|ORGANIZATION|LOCATION|CONCEPT|TASK|DOCUMENT"}], "relations": [{"subject": "...", "predicate": "MENTIONS|CONNECTS_TO|HAS|RELATED_TO|FOLLOWS", "object": "..."}]}
+## Entity Types (use exactly these UPPER_SNAKE_CASE values)
+- PERSON: Individual people (by name)
+- ORGANIZATION: Companies, teams, projects, products
+- LOCATION: Places, addresses, geographic features
+- CONCEPT: Ideas, theories, methodologies, abstract concepts
+- TASK: Actionable items, goals, deliverables
+- DOCUMENT: Files, articles, reports, records
+- TECHNOLOGY: Software, libraries, frameworks, tools
+- EVENT: Conferences, releases, incidents, meetings
 
-Rules:
-- Extract only entities explicitly mentioned in the text
-- Types must be UPPER_SNAKE_CASE
-- Predicates must be UPPERCASE
-- Be conservative - only extract what's literally stated
+## Relationship Predicates (use exactly these UPPERCASE values)
+- USES: Entity employs or depends on another (software uses library, person uses tool)
+- HAS: Entity possesses or includes another (project has task, org has team)
+- CONNECTED_TO: Related entities with no specific direction
+- MENTIONS: Entity references or discusses another
+- CREATED_BY: Entity was authored or built by another
+- PART_OF: Entity is subordinate to another (team part_of org, task part_of project)
+- FOLLOWS: Entity comes after or is successor to another
+- LOCATED_IN: Entity resides or exists at another location
+
+## Output Schema
+Return ONLY a JSON object (no explanations, no markdown fences):
+{"entities": [{"name": "...", "type": "PERSON|ORGANIZATION|..."}], "relations": [{"subject": "...", "predicate": "USES|HAS|...", "object": "..."}]}
+
+## Rules
+1. Extract only entities explicitly mentioned in the text
+2. Use the most complete/formal name for entity.name (e.g., "Claude Code" not "Claude", "MongoDB" not "Mongo")
+3. Relations should reflect direct, literal statements — not inferred causation
+4. One entity per unique name — do not list the same entity twice
+5. Be conservative: when in doubt, skip the entity or relation
+6. Include the predicate LOCATED_IN for geographic relationships
 
 Text:
 """ + EXTRACT_MARKER + """
@@ -185,7 +210,7 @@ def extract(text: str, model: Optional[str] = None, use_cache: bool = True) -> d
                 json={
                     "model": MINIMAX_MODEL,
                     "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 1024,
+                    "max_tokens": 2048,
                 },
             )
             response.raise_for_status()

@@ -65,7 +65,19 @@ def init():
         pass
     ents = db[ENTITIES_COL]
     ents.create_index("entity_id", unique=True)
-    ents.create_index("name_lower", unique=True)  # case-insensitive dedup
+    # Case-insensitive dedup — recreate with collation if needed
+    try:
+        existing = [idx["name"] for idx in ents.list_indexes()]
+        if "name_lower_1" in existing:
+            ents.drop_index("name_lower_1")
+        elif "name_lower" in existing:
+            ents.drop_index("name_lower")
+    except Exception:
+        pass
+    try:
+        ents.create_index("name_lower", unique=True, collation={"locale": "en", "strength": 2})
+    except Exception:
+        pass
     ents.create_index("canonical_id")  # for entity resolution linking
     ents.create_index("entity_type")
     ents.create_index([("name", TEXT)])
@@ -95,12 +107,14 @@ def init():
 def store_document(content: str, source: str, metadata: dict = None) -> str:
     """Store a raw document. Returns doc_id."""
     db = _get_db()
+    content_hash = hashlib.md5(content.encode()).hexdigest()[:32]
     doc_id = hashlib.md5((content + source).encode()).hexdigest()[:16]
 
     doc = {
         "doc_id": doc_id,
         "content": content,
         "source": source,
+        "content_hash": content_hash,  # for incremental update detection
         "metadata": metadata or {},
         "created_at": ts(),
     }
@@ -117,8 +131,16 @@ def store_document(content: str, source: str, metadata: dict = None) -> str:
     return doc_id
 
 
+def get_document_by_source(source: str) -> Optional[dict]:
+    """Find document by source. Returns (doc, content_hash) if found."""
+    db = _get_db()
+    doc = db[DOCUMENTS_COL].find_one({"source": source})
+    return doc
+
+
 def get_document(doc_id: str) -> Optional[dict]:
     """Retrieve a document by ID."""
+    db = _get_db()
     return db[DOCUMENTS_COL].find_one({"doc_id": doc_id})
 
 
@@ -225,10 +247,23 @@ def resolve_entities(names: list[str]) -> dict[str, str]:
     Returns a dict mapping each input name to its canonical entity_id.
     """
     db = _get_db()
+    if not names:
+        return {}
+
+    # Single query with $in instead of N queries
+    name_lowers = [n.lower().strip() for n in names]
+    entities = db[ENTITIES_COL].find({"name_lower": {"$in": name_lowers}})
+
+    # Build lookup map
+    ent_by_lower = {}
+    for ent in entities:
+        ent_lower = ent.get("name_lower", "")
+        ent_by_lower[ent_lower] = ent
+
     results = {}
     for name in names:
         name_lower = name.lower().strip()
-        ent = db[ENTITIES_COL].find_one({"name_lower": name_lower})
+        ent = ent_by_lower.get(name_lower)
         if ent:
             # Follow canonical chain
             while ent.get("canonical_id"):

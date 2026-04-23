@@ -94,6 +94,23 @@ def cmd_ingest_url(url: str):
     return 0
 
 
+def cmd_batch(paths: list[str], max_workers: int):
+    """Ingest multiple files in parallel."""
+    print(f"Batch ingesting {len(paths)} files (max_workers={max_workers})...")
+    t0 = time.time()
+    result = mongo_ingestion.ingest_files_mongo(paths, max_workers=max_workers)
+    elapsed = time.time() - t0
+
+    print(f"Done ({elapsed:.1f}s):")
+    print(f"  Files processed: {result['files_processed']}")
+    print(f"  Total chunks: {result['total_chunks']}")
+    print(f"  Total entities: {result['total_entities']}")
+    print(f"  Total relations: {result['total_relations']}")
+    if result.get("errors"):
+        print(f"  Errors: {result['errors'][:5]}")
+    return 0
+
+
 def cmd_neighbors(entity: str, hops: int = 1, predicate: str = None):
     """Show graph neighbors of an entity."""
     ent = mongo_memory.get_canonical_entity(entity)
@@ -194,10 +211,8 @@ def cmd_cache_clear(query_type: str = None):
         count = llm_cache.invalidate_cache(query_type=query_type)
         print(f"Cleared {count} {query_type} cache entries")
     else:
-        # Clear all by dropping and recreating collection
         db = mongo_memory._get_db()
-        db.drop_collection("llm_cache")
-        db.create_collection("llm_cache")
+        db["llm_cache"].delete_many({})
         print("Cleared all LLM cache entries")
 
 
@@ -219,6 +234,11 @@ def main():
     file_p.add_argument("type", choices=["file", "url"], help="Ingestion type")
     file_p.add_argument("path", help="File path or URL")
     file_p.add_argument("--entity", help="Tag with entity name")
+
+    # batch ingest
+    batch_p = sub.add_parser("batch", help="Ingest multiple files in parallel")
+    batch_p.add_argument("paths", nargs="+", help="File paths to ingest")
+    batch_p.add_argument("--workers", type=int, default=4, help="Max concurrent ingests (default 4)")
 
     # neighbors
     nb_p = sub.add_parser("neighbors", help="Show graph neighbors of an entity")
@@ -256,6 +276,8 @@ def main():
             return cmd_ingest_file(args.path, args.entity)
         else:
             return cmd_ingest_url(args.path)
+    elif args.command == "batch":
+        return cmd_batch(args.paths, args.workers)
     elif args.command == "neighbors":
         return cmd_neighbors(args.entity, args.hops, args.predicate)
     elif args.command == "stats":
@@ -266,6 +288,8 @@ def main():
         cmd_communities()
     elif args.command == "cache":
         cmd_cache_clear(args.query_type)
+    elif args.command == "batch":
+        cmd_batch(args.paths, args.workers)
 
     return 0
 
