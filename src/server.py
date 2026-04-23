@@ -7,7 +7,8 @@ import sys, os, json, subprocess, threading
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask, render_template_string, jsonify, request
-from src import mongo_memory, graph_quality, llm_cache
+from werkzeug.utils import secure_filename
+from src import mongo_memory, graph_quality, llm_cache, mongo_ingestion
 from src.query_router import hybrid_search
 from src.rag_synthesize import rag_with_query
 
@@ -177,6 +178,45 @@ def api_communities():
 @app.route("/api/duplicates")
 def api_duplicates():
     return jsonify({"duplicates": graph_quality.find_duplicate_entities()})
+
+
+@app.route("/api/ingest/file", methods=["POST"])
+def api_ingest_file():
+    """Ingest an uploaded file. Expects 'file' in multipart form data."""
+    if "file" not in request.files:
+        return jsonify({"error": "no file in request"}), 400
+
+    uploaded = request.files["file"]
+    if not uploaded.filename:
+        return jsonify({"error": "no file selected"}), 400
+
+    filename = secure_filename(uploaded.filename)
+    import tempfile, os as _os
+    tmpdir = tempfile.gettempdir()
+    tmp_path = _os.path.join(tmpdir, filename)
+    uploaded.save(tmp_path)
+
+    try:
+        result = mongo_ingestion.ingest_file_mongo(tmp_path)
+    finally:
+        try:
+            _os.unlink(tmp_path)
+        except Exception:
+            pass
+
+    return jsonify(result)
+
+
+@app.route("/api/ingest/url", methods=["POST"])
+def api_ingest_url():
+    """Ingest a URL. Expects JSON body with 'url' field."""
+    data = request.get_json() or {}
+    url = data.get("url", "").strip()
+    if not url:
+        return jsonify({"error": "no url provided"}), 400
+
+    result = mongo_ingestion.ingest_url_mongo(url)
+    return jsonify(result)
 
 
 if __name__ == "__main__":

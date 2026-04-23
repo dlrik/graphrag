@@ -532,6 +532,9 @@
     <div class="nav-item" data-panel="quality">
       <span class="nav-emoji">🔎</span> Duplicates
     </div>
+    <div class="nav-item" data-panel="ingest">
+      <span class="nav-emoji">📥</span> Ingest
+    </div>
   </nav>
 </div>
 
@@ -662,6 +665,35 @@
       <button class="btn-sm" onclick="loadDuplicates()">Refresh</button>
     </div>
     <div id="duplicates-list"></div>
+  </div>
+
+  <div class="panel" id="panel-ingest">
+    <div class="panel-header">
+      <div class="section-title">📥 Ingest Files & URLs</div>
+      <button class="btn-sm" onclick="loadStats()">Refresh Stats</button>
+    </div>
+
+    <div style="padding:16px">
+
+      <div style="margin-bottom:24px">
+        <div class="section-title" style="margin-bottom:8px">Upload File</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="file" id="ingest-file" accept=".pdf,.xlsx,.xls,.csv,.docx,.doc,.txt,.md,.markdown" style="flex:1">
+          <button class="btn" onclick="ingestFile()">Ingest</button>
+        </div>
+        <div id="ingest-file-status" style="margin-top:8px;font-size:13px;color:var(--text2)"></div>
+      </div>
+
+      <div>
+        <div class="section-title" style="margin-bottom:8px">Ingest URL</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="ingest-url" placeholder="https://example.com" style="flex:1;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text)">
+          <button class="btn" onclick="ingestUrl()">Ingest</button>
+        </div>
+        <div id="ingest-url-status" style="margin-top:8px;font-size:13px;color:var(--text2)"></div>
+      </div>
+
+    </div>
   </div>
 </div>
 
@@ -962,6 +994,56 @@ async function loadDuplicates() {
   }
 
   $('duplicates-list').innerHTML = html;
+}
+
+// Ingest
+async function ingestFile() {
+  const input = $('ingest-file');
+  if (!input.files.length) {
+    $('ingest-file-status').innerHTML = '<span style="color:var(--error)">No file selected</span>';
+    return;
+  }
+  const file = input.files[0];
+  $('ingest-file-status').innerHTML = '<span>Ingesting ' + esc(file.name) + '...</span>';
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch(API + '/api/ingest/file', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.error) {
+      $('ingest-file-status').innerHTML = '<span style="color:var(--error)">' + esc(data.error) + '</span>';
+    } else if (data.skipped) {
+      $('ingest-file-status').innerHTML = '<span style="color:var(--text2)">⏭ ' + esc(file.name) + ': content unchanged, skipped</span>';
+    } else {
+      $('ingest-file-status').innerHTML = '<span style="color:#4caf50">✓ ' + esc(file.name) + ': ' + data.chunks_processed + ' chunks, ' + data.entities_stored + ' entities, ' + data.relations_stored + ' relations</span>';
+    }
+  } catch (e) {
+    $('ingest-file-status').innerHTML = '<span style="color:var(--error)">' + esc(e.message) + '</span>';
+  }
+}
+
+async function ingestUrl() {
+  const url = $('ingest-url').value.trim();
+  if (!url) {
+    $('ingest-url-status').innerHTML = '<span style="color:var(--error)">Enter a URL</span>';
+    return;
+  }
+  $('ingest-url-status').innerHTML = '<span>Ingesting ' + esc(url) + '...</span>';
+  try {
+    const res = await fetch(API + '/api/ingest/url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    const data = await res.json();
+    if (data.error) {
+      $('ingest-url-status').innerHTML = '<span style="color:var(--error)">' + esc(data.error) + '</span>';
+    } else {
+      $('ingest-url-status').innerHTML = '<span style="color:#4caf50">✓ ' + esc(url) + ': ' + data.chunks_processed + ' chunks, ' + data.entities_stored + ' entities, ' + data.relations_stored + ' relations</span>';
+    }
+  } catch (e) {
+    $('ingest-url-status').innerHTML = '<span style="color:var(--error)">' + esc(e.message) + '</span>';
+  }
 }
 
 // Init
